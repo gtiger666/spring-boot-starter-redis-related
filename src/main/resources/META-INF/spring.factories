@@ -1,0 +1,4 @@
+# AutoConfiguration
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.github.jojotech.spring.boot.starter.redis.related.autoconf.RedissonAutoConfiguration,\
+  com.github.jojotech.spring.boot.starter.redis.related.autoconf.LettuceAutoConfiguration
