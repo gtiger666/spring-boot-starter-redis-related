@@ -9,5 +9,5 @@ import org.springframework.core.Ordered;
 @NoArgsConstructor
 @ConfigurationProperties(prefix = "spring.redis.redisson.aop")
 public class RedissonAopConfiguration {
-    private int order = Ordered.HIGHEST_PRECEDENCE;
+    private int order = Ordered.LOWEST_PRECEDENCE;
 }
