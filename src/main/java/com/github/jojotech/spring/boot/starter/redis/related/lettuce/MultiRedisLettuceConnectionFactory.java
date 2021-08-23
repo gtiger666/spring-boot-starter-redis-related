@@ -2,7 +2,7 @@ package com.github.jojotech.spring.boot.starter.redis.related.lettuce;
 
 import com.github.jojotech.spring.boot.starter.redis.related.conf.MultiRedisProperties;
 import com.github.jojotech.spring.boot.starter.redis.related.exception.RedisRelatedException;
-import io.micrometer.core.instrument.util.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.dao.DataAccessException;
