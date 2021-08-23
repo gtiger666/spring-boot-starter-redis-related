@@ -10,6 +10,7 @@ import org.redisson.api.RedissonRxClient;
 import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -60,7 +61,8 @@ public class RedissonConfiguration {
 
     @Autowired
     private RedissonProperties redissonProperties;
-
+    @Autowired
+    private MultiRedisProperties multiRedisProperties;
     @Autowired
     private RedisProperties redisProperties;
 
@@ -81,6 +83,9 @@ public class RedissonConfiguration {
 
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redisson() throws IOException {
+        RedisProperties redisProperties = multiRedisProperties.isEnableMulti() ?
+                multiRedisProperties.getMulti().get(MultiRedisProperties.DEFAULT)
+                : this.redisProperties;
         Config config = null;
         Method clusterMethod = ReflectionUtils.findMethod(RedisProperties.class, "getCluster");
         Method timeoutMethod = ReflectionUtils.findMethod(RedisProperties.class, "getTimeout");

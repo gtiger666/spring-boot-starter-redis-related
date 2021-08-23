@@ -8,10 +8,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,15 +21,20 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import redis.embedded.RedisServer;
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
-@RunWith(SpringRunner.class)
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@ExtendWith(SpringExtension.class)
 @SpringBootTest(properties = {
         "spring.redis.redisson.aop.order=" + RedissonTest.ORDER,
+        "spring.redis.enable-multi=true",
+        "spring.redis.multi.default.host=127.0.0.1",
+        "spring.redis.multi.default.port=6379",
+        "logging.level.org.springframework.boot.autoconfigure=debug",
 })
 public class RedissonTest {
     public static final int ORDER = -100000;
@@ -36,16 +42,22 @@ public class RedissonTest {
     private static final int ADD_COUNT = 10000;
     @Autowired
     private RedissonAopConfiguration redissonAopConfiguration;
-    @Autowired
-    private RedissonClient redissonClient;
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
-    private RedisServer redisServer;
 
+    private static RedisServer redisServer;
 
-    public RedissonTest() throws IOException {
-        this.redisServer = RedisServer.builder().port(6379).setting("maxheap 20m").build();
+    @BeforeAll
+    public static void setUp() throws Exception {
+        System.out.println("start redis");
+        redisServer = RedisServer.builder().port(6379).setting("maxheap 200m").build();
         redisServer.start();
+        System.out.println("redis started");
+    }
+
+    @AfterAll
+    public static void tearDown() throws Exception {
+        System.out.println("stop redis");
+        redisServer.stop();
+        System.out.println("redis stopped");
     }
 
     @Data
@@ -98,17 +110,17 @@ public class RedissonTest {
         public void testRedissonLockNameProperty(@RedissonLockName(prefix = "test:", expression = "#{id==null?name:id}") Student student, String params) throws InterruptedException {
             String lockName = student.getId() == null ? student.getName() : student.getId();
             RLock lock = redissonClient.getLock("test:" + lockName);
-            Assert.assertTrue(lock.isHeldByCurrentThread());
+            Assertions.assertTrue(lock.isHeldByCurrentThread());
         }
 
         @RedissonLock(leaseTime = 1000L)
         public void testLockTime(@RedissonLockName String name) throws InterruptedException {
             RLock lock = redissonClient.getLock(RedissonLockName.DEFAULT_PREFIX + name);
             //验证获取了锁
-            Assert.assertTrue(lock.isHeldByCurrentThread());
+            Assertions.assertTrue(lock.isHeldByCurrentThread());
             TimeUnit.SECONDS.sleep(2);
             //过了两秒，锁应该被释放了
-            Assert.assertFalse(lock.isLocked());
+            Assertions.assertFalse(lock.isLocked());
         }
 
         //waitTime只对于 trylock 有效
@@ -116,7 +128,7 @@ public class RedissonTest {
         public void testWaitTime(@RedissonLockName String name) throws InterruptedException {
             RLock lock = redissonClient.getLock(RedissonLockName.DEFAULT_PREFIX + name);
             //验证获取了锁
-            Assert.assertTrue(lock.isHeldByCurrentThread());
+            Assertions.assertTrue(lock.isHeldByCurrentThread());
             TimeUnit.SECONDS.sleep(10);
         }
     }
@@ -134,11 +146,6 @@ public class RedissonTest {
     @Autowired
     private TestRedissonLockClass testRedissonLockClass;
 
-    @After
-    public void after() {
-        redisServer.stop();
-    }
-
     @EnableAutoConfiguration
     @Configuration
     public static class App {
@@ -153,7 +160,7 @@ public class RedissonTest {
 
     @Test
     public void testAopConfiguration() {
-        Assert.assertEquals(redissonAopConfiguration.getOrder(), ORDER);
+        Assertions.assertEquals(redissonAopConfiguration.getOrder(), ORDER);
     }
 
     @Test
@@ -174,7 +181,7 @@ public class RedissonTest {
         for (Thread item : threads) {
             item.join();
         }
-        Assert.assertTrue(testRedissonLockClass.getCount() < THREAD_COUNT * ADD_COUNT);
+        Assertions.assertTrue(testRedissonLockClass.getCount() < THREAD_COUNT * ADD_COUNT);
         //测试阻塞锁，最后的值应该等于期望值
         testRedissonLockClass.reset();
         for (int i = 0; i < threads.length; i++) {
@@ -190,7 +197,7 @@ public class RedissonTest {
         for (Thread value : threads) {
             value.join();
         }
-        Assert.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
+        Assertions.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
 
         testRedissonLockClass.reset();
         for (int i = 0; i < threads.length; i++) {
@@ -206,7 +213,7 @@ public class RedissonTest {
         for (Thread value : threads) {
             value.join();
         }
-        Assert.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
+        Assertions.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
 
         testRedissonLockClass.reset();
         for (int i = 0; i < threads.length; i++) {
@@ -222,7 +229,7 @@ public class RedissonTest {
         for (Thread value : threads) {
             value.join();
         }
-        Assert.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
+        Assertions.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
 
         //测试 tryLock锁 + 等待时间，由于是本地 redis 这个 10s 等待时间应该足够，最后的值应该等于期望值
         testRedissonLockClass.reset();
@@ -239,7 +246,7 @@ public class RedissonTest {
         for (Thread thread : threads) {
             thread.join();
         }
-        Assert.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
+        Assertions.assertEquals(testRedissonLockClass.getCount(), THREAD_COUNT * ADD_COUNT);
         //测试 tryLock锁，不等待
         testRedissonLockClass.reset();
         for (int i = 0; i < threads.length; i++) {
@@ -258,7 +265,7 @@ public class RedissonTest {
             thread.join();
         }
         //由于锁住的时间比较久，只有一个线程执行了 add()
-        Assert.assertEquals(testRedissonLockClass.getCount(), ADD_COUNT);
+        Assertions.assertEquals(testRedissonLockClass.getCount(), ADD_COUNT);
     }
 
     @Test
@@ -274,7 +281,7 @@ public class RedissonTest {
         testRedissonLockClass.testLockTime("same");
     }
 
-    @Test(expected = RedisRelatedException.class)
+    @Test
     public void testWaitTime() throws InterruptedException {
         testRedissonLockClass.reset();
         Thread thread = new Thread(() -> {
@@ -287,7 +294,7 @@ public class RedissonTest {
         thread.start();
         TimeUnit.SECONDS.sleep(3);
         //在等待时间内获取不到锁，抛异常
-        testRedissonLockClass.testWaitTime("same");
+        assertThrows(RedisRelatedException.class, () -> testRedissonLockClass.testWaitTime("same"));
     }
 
     @Test
@@ -310,6 +317,6 @@ public class RedissonTest {
         for (int i = 0; i < threads.length; i++) {
             threads[i].join();
         }
-        Assert.assertTrue(testRedissonLockClass.getCount() < THREAD_COUNT * ADD_COUNT);
+        Assertions.assertTrue(testRedissonLockClass.getCount() < THREAD_COUNT * ADD_COUNT);
     }
 }

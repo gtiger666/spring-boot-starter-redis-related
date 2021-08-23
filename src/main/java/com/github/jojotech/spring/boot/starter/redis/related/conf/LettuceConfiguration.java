@@ -31,4 +31,6 @@ public class LettuceConfiguration {
                 ).build();
         return build;
     }
+
+
 }
