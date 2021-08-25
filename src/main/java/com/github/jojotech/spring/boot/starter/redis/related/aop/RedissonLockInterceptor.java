@@ -2,7 +2,6 @@ package com.github.jojotech.spring.boot.starter.redis.related.aop;
 
 import com.github.jojotech.spring.boot.starter.redis.related.annotation.RedissonLock;
 import com.github.jojotech.spring.boot.starter.redis.related.annotation.RedissonLockName;
-import com.github.jojotech.spring.boot.starter.redis.related.domain.LockProperties;
 import com.github.jojotech.spring.boot.starter.redis.related.exception.RedisRelatedException;
 import lombok.extern.log4j.Log4j2;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -22,15 +21,15 @@ import java.util.Arrays;
  * redisson 锁核心实现类
  */
 @Log4j2
-public class RedissonInterceptor implements MethodInterceptor {
+public class RedissonLockInterceptor implements MethodInterceptor {
     private final RedissonClient redissonClient;
-    private final CachedPointcut cachedPointcut;
+    private final RedissonLockCachedPointcut redissonLockCachedPointcut;
     private final SpelExpressionParser parser = new SpelExpressionParser();
     private final ParserContext context = new TemplateParserContext();
 
-    public RedissonInterceptor(RedissonClient redissonClient, CachedPointcut cachedPointcut) {
+    public RedissonLockInterceptor(RedissonClient redissonClient, RedissonLockCachedPointcut redissonLockCachedPointcut) {
         this.redissonClient = redissonClient;
-        this.cachedPointcut = cachedPointcut;
+        this.redissonLockCachedPointcut = redissonLockCachedPointcut;
     }
 
     /**
@@ -44,15 +43,15 @@ public class RedissonInterceptor implements MethodInterceptor {
     public Object invoke(MethodInvocation invocation) throws Throwable {
         Method method = invocation.getMethod();
         Class<?> clazz = invocation.getThis().getClass();
-        LockProperties lockProperties = cachedPointcut.getLockProperties(method, clazz);
-        if (lockProperties == null) {
-            log.error("RedissonInterceptor-invoke error! Cannot find corresponding LockProperties, method {} run without lock", method.getName());
+        RedissonLockProperties redissonLockProperties = redissonLockCachedPointcut.getRedissonProperties(method, clazz);
+        if (redissonLockProperties == null || redissonLockProperties == AbstractRedissonProperties.NONE) {
+            log.error("RedissonLockInterceptor-invoke error! Cannot find corresponding LockProperties, method {} run without lock", method.getName());
             return invocation.proceed();
         }
-        String lockName = getLockName(lockProperties, invocation.getArguments());
-        RedissonLock redissonLock = lockProperties.getRedissonLock();
+        String lockName = getLockName(redissonLockProperties, invocation.getArguments());
+        RedissonLock redissonLock = redissonLockProperties.getRedissonLock();
         try {
-            log.debug("RedissonInterceptor-invoke begin to try redisson lockName {}, method: {}, thread: {}", lockName, method.getName(), Thread.currentThread().getName());
+            log.debug("RedissonLockInterceptor-invoke begin to try redisson lockName {}, method: {}, thread: {}", lockName, method.getName(), Thread.currentThread().getName());
             //创建锁
             RLock lock = null;
             RedissonLock.LockFeature lockFeature = redissonLock.lockFeature();
@@ -83,7 +82,7 @@ public class RedissonInterceptor implements MethodInterceptor {
                 throw new RedisRelatedException("Not implemented LockFeature: " + lockFeature);
             }
             if (lock == null) {
-                log.error("RedissonInterceptor-invoke {} err! error during create redisson lock!", method.getName());
+                log.error("RedissonLockInterceptor-invoke {} err! error during create redisson lock!", method.getName());
                 return invocation.proceed();
             }
             try {
@@ -103,7 +102,7 @@ public class RedissonInterceptor implements MethodInterceptor {
                 if (!getLock) {
                     throw new RedisRelatedException("can not get redisson lock,method:" + method.getName() + ", params: " + Arrays.toString(invocation.getArguments()));
                 } else {
-                    log.debug("RedissonInterceptor-invoke successfully locked lockName {}, method: {}, threadId: {}",
+                    log.debug("RedissonLockInterceptor-invoke successfully locked lockName {}, method: {}, threadId: {}",
                             lockName, method.getName(), Thread.currentThread().getId());
                 }
                 return invocation.proceed();
@@ -121,27 +120,31 @@ public class RedissonInterceptor implements MethodInterceptor {
         if (lock.isLocked() && lock.isHeldByCurrentThread()) {
             try {
                 lock.unlock();
-                log.debug("RedissonInterceptor-release redisson lock released, method:" + method.getName()
+                log.debug("RedissonLockInterceptor-release redisson lock released, method:" + method.getName()
                         + ", threadId:" + Thread.currentThread().getId());
             } catch (Exception e) {
                 log.error("error during release redisson lock", e);
             }
         } else {
-            log.debug("RedissonInterceptor-release redisson lock not exist or held, method:"
+            log.debug("RedissonLockInterceptor-release redisson lock not exist or held, method:"
                     + method.getName() + ", threadId:" + Thread.currentThread().getId());
         }
     }
 
-    private String getLockName(LockProperties lockProperties, Object... params) {
-        RedissonLockName redissonLockName = lockProperties.getRedissonLockName();
-        int parameterIndex = lockProperties.getParameterIndex();
+    private String getLockName(RedissonLockProperties redissonLockProperties, Object... params) {
+        RedissonLockName redissonLockName = redissonLockProperties.getRedissonLockName();
         StringBuilder lockName = new StringBuilder();
-        String prefix = redissonLockName.prefix();
-        String expression = redissonLockName.expression();
-        if (StringUtils.isNotBlank(expression)) {
-            lockName.append(prefix).append(parser.parseExpression(expression, context).getValue(params[parameterIndex]));
+        if (redissonLockName != null) {
+            int parameterIndex = redissonLockProperties.getParameterIndex();
+            String prefix = redissonLockName.prefix();
+            String expression = redissonLockName.expression();
+            if (StringUtils.isNotBlank(expression)) {
+                lockName.append(prefix).append(parser.parseExpression(expression, context).getValue(params[parameterIndex]));
+            } else {
+                lockName.append(prefix).append(params[parameterIndex]);
+            }
         } else {
-            lockName.append(prefix).append(params[parameterIndex]);
+            lockName.append(redissonLockProperties.getRedissonLock().name());
         }
         return lockName.toString();
     }

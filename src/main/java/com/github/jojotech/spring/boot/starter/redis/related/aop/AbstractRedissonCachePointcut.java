@@ -2,14 +2,10 @@ package com.github.jojotech.spring.boot.starter.redis.related.aop;
 
 import com.github.jojotech.spring.boot.starter.redis.related.annotation.RedissonLock;
 import com.github.jojotech.spring.boot.starter.redis.related.annotation.RedissonLockName;
-import com.github.jojotech.spring.boot.starter.redis.related.domain.LockProperties;
 import lombok.extern.log4j.Log4j2;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.ClassUtils;
 import org.springframework.aop.support.StaticMethodMatcherPointcut;
-import reactor.util.function.Tuples;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.Arrays;
@@ -20,12 +16,12 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Log4j2
-public class CachedPointcut extends StaticMethodMatcherPointcut {
-
+public abstract class AbstractRedissonCachePointcut<RedissonProp extends AbstractRedissonProperties> extends StaticMethodMatcherPointcut {
     /**
      * Key 为方法全限定名称 + 参数，value 为对应的 Redisson 锁注解以及锁名称
      */
-    private final Map<String, LockProperties> cache = new ConcurrentHashMap<>();
+    private final Map<String, Object> cache = new ConcurrentHashMap<>();
+
     /**
      * 判断该方法，或者父类（包含接口）中是否加锁，并缓存起来
      *
@@ -37,22 +33,26 @@ public class CachedPointcut extends StaticMethodMatcherPointcut {
     public boolean matches(Method method, Class<?> targetClass) {
         String key = key(method, targetClass);
         return cache.computeIfAbsent(key, k -> {
-            LockProperties lockProperties = computeLockProperties(method, targetClass);
-            if (lockProperties != null) {
-                return lockProperties;
+            RedissonProp redissonProp = computeRedissonProperties(method, targetClass);
+            if (redissonProp != null) {
+                return redissonProp;
             }
             List<Class<?>> allSuperclasses = ClassUtils.getAllSuperclasses(targetClass);
-            Optional<LockProperties> optional = fromClasses(allSuperclasses, method);
+            Optional<RedissonProp> optional = fromClasses(allSuperclasses, method);
             if (optional.isEmpty()) {
                 allSuperclasses = ClassUtils.getAllInterfaces(targetClass);
                 optional = fromClasses(allSuperclasses, method);
             }
-            return optional.orElse(LockProperties.NO_LOCK);
-        }) != LockProperties.NO_LOCK;
+            if (optional.isPresent()) {
+                return optional.get();
+            }
+            return AbstractRedissonProperties.NONE;
+        }) != AbstractRedissonProperties.NONE;
     }
 
-    public LockProperties getLockProperties(Method method, Class<?> targetClass) {
-        return cache.get(key(method, targetClass));
+    public RedissonProp getRedissonProperties(Method method, Class<?> targetClass) {
+        Object o = cache.get(key(method, targetClass));
+        return (RedissonProp) o;
     }
 
     private String key(Method method, Class<?> targetClass) {
@@ -73,36 +73,12 @@ public class CachedPointcut extends StaticMethodMatcherPointcut {
      * @param method 加锁的方法
      * @return {@link RedissonLock} {@link RedissonLockName} 以及{@link RedissonLockName} 所对应的参数下标
      */
-    private Optional<LockProperties> fromClasses(List<Class<?>> list, Method method) {
+    private Optional<RedissonProp> fromClasses(List<Class<?>> list, Method method) {
         return list.stream()
-                .map(i -> computeLockProperties(method, i))
+                .map(i -> computeRedissonProperties(method, i))
                 .filter(Objects::nonNull)
                 .findFirst();
     }
 
-    private LockProperties computeLockProperties(Method method, Class<?> clazz) {
-        try {
-            Method m = clazz.getMethod(method.getName(), method.getParameterTypes());
-            RedissonLock l = m.getAnnotation(RedissonLock.class);
-            if (l != null) {
-                Annotation[][] as = method.getParameterAnnotations();
-                for (int i = 0; i < as.length; i++) {
-                    Annotation[] ar = as[i];
-                    if (ArrayUtils.isEmpty(ar)) {
-                        continue;
-                    }
-                    //获取第一个 RedissonLockName 注解的参数
-                    Optional<RedissonLockName> op = Arrays.stream(ar)
-                            .filter(a -> a instanceof RedissonLockName)
-                            .map(a -> (RedissonLockName) a)
-                            .findFirst();
-                    if (op.isPresent()) {
-                        return new LockProperties(l, op.get(), i);
-                    }
-                }
-            }
-        } catch (NoSuchMethodException e) {
-        }
-        return null;
-    }
+    protected abstract RedissonProp computeRedissonProperties(Method method, Class<?> clazz);
 }

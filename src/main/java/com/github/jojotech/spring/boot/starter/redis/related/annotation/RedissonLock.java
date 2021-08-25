@@ -21,6 +21,13 @@ import java.util.concurrent.TimeUnit;
 )
 public @interface RedissonLock {
     /**
+     * 一般通过 RedissonLockName 指定锁名称
+     * 但如果锁和方法参数无关，则通过这个 name 指定
+     * 如果 RedissonLockName 为空，这个 name 也是默认的 空字符串，则锁不生效
+     */
+    String name() default "";
+
+    /**
      * 锁特性
      */
     LockFeature lockFeature() default LockFeature.DEFAULT;

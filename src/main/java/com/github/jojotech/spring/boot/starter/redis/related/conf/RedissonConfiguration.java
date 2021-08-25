@@ -1,8 +1,11 @@
 package com.github.jojotech.spring.boot.starter.redis.related.conf;
 
-import com.github.jojotech.spring.boot.starter.redis.related.aop.CachedPointcut;
-import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonAdvisor;
-import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonInterceptor;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonLockCachedPointcut;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonLockAdvisor;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonLockInterceptor;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonRateLimiterAdvisor;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonRateLimiterCachedPointcut;
+import com.github.jojotech.spring.boot.starter.redis.related.aop.RedissonRateLimiterInterceptor;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.RedissonReactiveClient;
@@ -10,8 +13,6 @@ import org.redisson.api.RedissonRxClient;
 import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
@@ -32,27 +33,6 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(value = {RedissonAopConfiguration.class, RedissonProperties.class})
 public class RedissonConfiguration {
-    @Autowired
-    private RedissonAopConfiguration redissonAopConfiguration;
-
-    @Bean
-    public CachedPointcut redissonCachedPointCut() {
-        return new CachedPointcut();
-    }
-
-    @Bean
-    public RedissonInterceptor redissonInterceptor(RedissonClient redissonClient, CachedPointcut cachedPointcut) {
-        return new RedissonInterceptor(redissonClient, cachedPointcut);
-    }
-
-    @Bean
-    public RedissonAdvisor redissonAdvisor(CachedPointcut cachedPointcut, RedissonInterceptor redissonInterceptor) {
-        var advisor = new RedissonAdvisor(cachedPointcut);
-        advisor.setAdvice(redissonInterceptor);
-        advisor.setOrder(redissonAopConfiguration.getOrder());
-        return advisor;
-    }
-
     private static final String REDIS_PROTOCOL_PREFIX = "redis://";
     private static final String REDISS_PROTOCOL_PREFIX = "rediss://";
 
